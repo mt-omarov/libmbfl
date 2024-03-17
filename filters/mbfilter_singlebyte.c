@@ -57,7 +57,6 @@ static int mbfl_conv_reverselookup_table(int c, mbfl_convert_filter *filter, int
 	static int mbfl_filt_conv_##id##_wchar(int c, mbfl_convert_filter *filter); \
 	static int mbfl_filt_conv_wchar_##id(int c, mbfl_convert_filter *filter); \
 	static size_t mb_##id##_to_wchar(unsigned char **in, size_t *in_len, uint32_t *buf, size_t bufsize, unsigned int *state); \
-	static void mb_wchar_to_##id(uint32_t *in, size_t len, mb_convert_buf *buf, bool end); \
 	static const struct mbfl_convert_vtbl vtbl_##id##_wchar = { \
 		mbfl_no_encoding_##id, \
 		mbfl_no_encoding_wchar, \
@@ -86,7 +85,6 @@ static int mbfl_conv_reverselookup_table(int c, mbfl_convert_filter *filter, int
 		&vtbl_##id##_wchar, \
 		&vtbl_wchar_##id, \
 		mb_##id##_to_wchar, \
-		mb_wchar_to_##id, \
 		NULL, \
 		NULL \
 	}
@@ -110,29 +108,6 @@ static int mbfl_conv_reverselookup_table(int c, mbfl_convert_filter *filter, int
 		*in_len = e - p; \
 		*in = p; \
 		return out - buf; \
-	} \
-	static void mb_wchar_to_##id(uint32_t *in, size_t len, mb_convert_buf *buf, bool end) \
-	{ \
-		unsigned char *out, *limit; \
-		MB_CONVERT_BUF_LOAD(buf, out, limit); \
-		MB_CONVERT_BUF_ENSURE(buf, out, limit, len); \
-		while (len--) { \
-			uint32_t w = *in++; \
-			if (w < tbl_min) { \
-				out = mb_convert_buf_add(out, w & 0xFF); \
-			} else { \
-				for (int i = 0; i < 256 - tbl_min; i++) { \
-					if (w == tbl[i]) { \
-						out = mb_convert_buf_add(out, i + tbl_min); \
-						goto next_iteration; \
-					} \
-				} \
-				MB_CONVERT_ERROR(buf, out, limit, w, mb_wchar_to_##id); \
-				MB_CONVERT_BUF_ENSURE(buf, out, limit, len); \
-	next_iteration: ; \
-			} \
-		} \
-		MB_CONVERT_BUF_STORE(buf, out, limit); \
 	} \
 	DEF_SB(id, name, mime_name, aliases)
 
@@ -171,25 +146,6 @@ static size_t mb_ascii_to_wchar(unsigned char **in, size_t *in_len, uint32_t *bu
 	return out - buf;
 }
 
-static void mb_wchar_to_ascii(uint32_t *in, size_t len, mb_convert_buf *buf, bool end)
-{
-	unsigned char *out, *limit;
-	MB_CONVERT_BUF_LOAD(buf, out, limit);
-	MB_CONVERT_BUF_ENSURE(buf, out, limit, len);
-
-	while (len--) {
-		uint32_t w = *in++;
-		if (w < 0x80) {
-			out = mb_convert_buf_add(out, w & 0xFF);
-		} else {
-			MB_CONVERT_ERROR(buf, out, limit, w, mb_wchar_to_ascii);
-			MB_CONVERT_BUF_ENSURE(buf, out, limit, len);
-		}
-	}
-
-	MB_CONVERT_BUF_STORE(buf, out, limit);
-}
-
 /* ISO-8859-X */
 
 static const char *iso8859_1_aliases[] = {"ISO8859-1", "latin1", NULL};
@@ -222,25 +178,6 @@ static size_t mb_8859_1_to_wchar(unsigned char **in, size_t *in_len, uint32_t *b
 	*in_len = e - p;
 	*in = p;
 	return out - buf;
-}
-
-static void mb_wchar_to_8859_1(uint32_t *in, size_t len, mb_convert_buf *buf, bool end)
-{
-	unsigned char *out, *limit;
-	MB_CONVERT_BUF_LOAD(buf, out, limit);
-	MB_CONVERT_BUF_ENSURE(buf, out, limit, len);
-
-	while (len--) {
-		uint32_t w = *in++;
-		if (w < 0x100) {
-			out = mb_convert_buf_add(out, w);
-		} else {
-			MB_CONVERT_ERROR(buf, out, limit, w, mb_wchar_to_8859_1);
-			MB_CONVERT_BUF_ENSURE(buf, out, limit, len);
-		}
-	}
-
-	MB_CONVERT_BUF_STORE(buf, out, limit);
 }
 
 static const char *iso8859_2_aliases[] = {"ISO8859-2", "latin2", NULL};
@@ -546,36 +483,6 @@ static size_t mb_cp1252_to_wchar(unsigned char **in, size_t *in_len, uint32_t *b
 	return out - buf;
 }
 
-static void mb_wchar_to_cp1252(uint32_t *in, size_t len, mb_convert_buf *buf, bool end)
-{
-	unsigned char *out, *limit;
-	MB_CONVERT_BUF_LOAD(buf, out, limit);
-	MB_CONVERT_BUF_ENSURE(buf, out, limit, len);
-
-	while (len--) {
-		uint32_t w = *in++;
-
-		if (w >= 0x100) {
-			for (int i = 0; i < 32; i++) {
-				if (w == cp1252_ucs_table[i]) {
-					out = mb_convert_buf_add(out, i + 0x80);
-					goto continue_cp1252;
-				}
-			}
-			MB_CONVERT_ERROR(buf, out, limit, w, mb_wchar_to_cp1252);
-			MB_CONVERT_BUF_ENSURE(buf, out, limit, len);
-		} else if (w <= 0x7F || w >= 0xA0 || w == 0x81 || w == 0x8D || w == 0x8F || w == 0x90 || w == 0x9D) {
-			out = mb_convert_buf_add(out, w);
-		} else {
-			MB_CONVERT_ERROR(buf, out, limit, w, mb_wchar_to_cp1252);
-			MB_CONVERT_BUF_ENSURE(buf, out, limit, len);
-		}
-		continue_cp1252: ;
-	}
-
-	MB_CONVERT_BUF_STORE(buf, out, limit);
-}
-
 static const char *cp1254_aliases[] = {"CP1254", "CP-1254", "WINDOWS-1254", NULL};
 static const unsigned short cp1254_ucs_table[] = {
 	0x20AC, 0X0000, 0X201A, 0X0192, 0X201E, 0X2026, 0X2020, 0X2021,
@@ -740,33 +647,4 @@ static size_t mb_armscii8_to_wchar(unsigned char **in, size_t *in_len, uint32_t 
 	*in_len = e - p;
 	*in = p;
 	return out - buf;
-}
-
-static void mb_wchar_to_armscii8(uint32_t *in, size_t len, mb_convert_buf *buf, bool end)
-{
-	unsigned char *out, *limit;
-	MB_CONVERT_BUF_LOAD(buf, out, limit);
-	MB_CONVERT_BUF_ENSURE(buf, out, limit, len);
-
-	while (len--) {
-		uint32_t w = *in++;
-
-		if (w >= 0x28 && w <= 0x2F) {
-			out = mb_convert_buf_add(out, ucs_armscii8_table[w - 0x28]);
-		} else if (w < 0xA0) {
-			out = mb_convert_buf_add(out, w);
-		} else {
-			for (int i = 0; i < 0x60; i++) {
-				if (w == armscii8_ucs_table[i]) {
-					out = mb_convert_buf_add(out, 0xA0 + i);
-					goto continue_armscii8;
-				}
-			}
-			MB_CONVERT_ERROR(buf, out, limit, w, mb_wchar_to_armscii8);
-			MB_CONVERT_BUF_ENSURE(buf, out, limit, len);
-		}
-		continue_armscii8: ;
-	}
-
-	MB_CONVERT_BUF_STORE(buf, out, limit);
 }

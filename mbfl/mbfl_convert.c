@@ -35,6 +35,7 @@
 #include "mbfilter_pass.h"
 #include "mbfilter_8bit.h"
 #include "mbfilter_wchar.h"
+#include "mbfl_allocators.h"
 
 #include "filters/mbfilter_base64.h"
 #include "filters/mbfilter_cjk.h"
@@ -101,7 +102,7 @@ mbfl_convert_filter* mbfl_convert_filter_new(const mbfl_encoding *from, const mb
 		return NULL;
 	}
 
-	mbfl_convert_filter *filter = emalloc(sizeof(mbfl_convert_filter));
+	mbfl_convert_filter *filter = (mbfl_convert_filter *)mbfl_malloc((void *)sizeof(mbfl_convert_filter));
 	mbfl_convert_filter_init(filter, from, to, vtbl, output_function, flush_function, data);
 	return filter;
 }
@@ -112,7 +113,7 @@ mbfl_convert_filter* mbfl_convert_filter_new2(const struct mbfl_convert_vtbl *vt
 	const mbfl_encoding *from_encoding = mbfl_no2encoding(vtbl->from);
 	const mbfl_encoding *to_encoding = mbfl_no2encoding(vtbl->to);
 
-	mbfl_convert_filter *filter = emalloc(sizeof(mbfl_convert_filter));
+	mbfl_convert_filter *filter = (mbfl_convert_filter *)mbfl_malloc((void *)sizeof(mbfl_convert_filter));
 	mbfl_convert_filter_init(filter, from_encoding, to_encoding, vtbl, output_function, flush_function, data);
 	return filter;
 }
@@ -122,7 +123,7 @@ void mbfl_convert_filter_delete(mbfl_convert_filter *filter)
 	if (filter->filter_dtor) {
 		(*filter->filter_dtor)(filter);
 	}
-	efree(filter);
+	mbfl_free(filter);
 }
 
 /* Feed a char, return 0 if ok - used by mailparse ext */
@@ -322,30 +323,6 @@ int mbfl_filt_conv_common_flush(mbfl_convert_filter *filter)
 	return 0;
 }
 
-zend_string* mb_fast_convert(unsigned char *in, size_t in_len, const mbfl_encoding *from, const mbfl_encoding *to, uint32_t replacement_char, unsigned int error_mode, unsigned int *num_errors)
-{
-	uint32_t wchar_buf[128];
-	unsigned int state = 0;
-
-	if (to == &mbfl_encoding_base64 || to == &mbfl_encoding_qprint) {
-		from = &mbfl_encoding_8bit;
-	} else if (from == &mbfl_encoding_base64 || from == &mbfl_encoding_qprint || from == &mbfl_encoding_uuencode) {
-		to = &mbfl_encoding_8bit;
-	}
-
-	mb_convert_buf buf;
-	mb_convert_buf_init(&buf, in_len, replacement_char, error_mode);
-
-	while (in_len) {
-		size_t out_len = from->to_wchar(&in, &in_len, wchar_buf, 128, &state);
-		ZEND_ASSERT(out_len <= 128);
-		to->from_wchar(wchar_buf, out_len, &buf, !in_len);
-	}
-
-	*num_errors = buf.errors;
-	return mb_convert_buf_result(&buf, to);
-}
-
 static uint32_t* convert_cp_to_hex(uint32_t cp, uint32_t *out)
 {
 	bool nonzero = false;
@@ -401,38 +378,4 @@ static size_t mb_illegal_marker(uint32_t bad_cp, uint32_t *out, unsigned int err
 	}
 
 	return out - start;
-}
-
-void mb_illegal_output(uint32_t bad_cp, mb_from_wchar_fn fn, mb_convert_buf* buf)
-{
-	buf->errors++;
-
-	uint32_t temp[12];
-	uint32_t repl_char = buf->replacement_char;
-	unsigned int err_mode = buf->error_mode;
-
-	if (err_mode == MBFL_OUTPUTFILTER_ILLEGAL_MODE_BADUTF8) {
-		/* This mode is for internal use only, when converting a string to
-		 * UTF-8 before searching it; it uses a byte which is illegal in
-		 * UTF-8 as an error marker. This ensures that error markers will
-		 * never 'accidentally' match valid text, as could happen when a
-		 * character like '?' is used as an error marker. */
-		MB_CONVERT_BUF_ENSURE(buf, buf->out, buf->limit, 1);
-		buf->out = mb_convert_buf_add(buf->out, 0xFF);
-		return;
-	}
-
-	size_t len = mb_illegal_marker(bad_cp, temp, err_mode, repl_char);
-
-	/* Avoid infinite loop if `fn` is not able to handle `repl_char` */
-	if (err_mode == MBFL_OUTPUTFILTER_ILLEGAL_MODE_CHAR && repl_char != '?') {
-		buf->replacement_char = '?';
-	} else {
-		buf->error_mode = MBFL_OUTPUTFILTER_ILLEGAL_MODE_NONE;
-	}
-
-	fn(temp, len, buf, false);
-
-	buf->replacement_char = repl_char;
-	buf->error_mode = err_mode;
 }

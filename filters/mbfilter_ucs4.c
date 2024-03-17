@@ -32,9 +32,7 @@
 
 static size_t mb_ucs4_to_wchar(unsigned char **in, size_t *in_len, uint32_t *buf, size_t bufsize, unsigned int *state);
 static size_t mb_ucs4be_to_wchar(unsigned char **in, size_t *in_len, uint32_t *buf, size_t bufsize, unsigned int *state);
-static void mb_wchar_to_ucs4be(uint32_t *in, size_t len, mb_convert_buf *buf, bool end);
 static size_t mb_ucs4le_to_wchar(unsigned char **in, size_t *in_len, uint32_t *buf, size_t bufsize, unsigned int *state);
-static void mb_wchar_to_ucs4le(uint32_t *in, size_t len, mb_convert_buf *buf, bool end);
 
 static const char *mbfl_encoding_ucs4_aliases[] = {"ISO-10646-UCS-4", "UCS4", NULL};
 
@@ -56,7 +54,6 @@ const mbfl_encoding mbfl_encoding_ucs4 = {
 	&vtbl_ucs4_wchar,
 	&vtbl_wchar_ucs4,
 	mb_ucs4_to_wchar,
-	mb_wchar_to_ucs4be,
 	NULL,
 	NULL,
 };
@@ -71,7 +68,6 @@ const mbfl_encoding mbfl_encoding_ucs4be = {
 	&vtbl_ucs4be_wchar,
 	&vtbl_wchar_ucs4be,
 	mb_ucs4be_to_wchar,
-	mb_wchar_to_ucs4be,
 	NULL,
 	NULL,
 };
@@ -86,7 +82,6 @@ const mbfl_encoding mbfl_encoding_ucs4le = {
 	&vtbl_ucs4le_wchar,
 	&vtbl_wchar_ucs4le,
 	mb_ucs4le_to_wchar,
-	mb_wchar_to_ucs4le,
 	NULL,
 	NULL,
 };
@@ -375,25 +370,6 @@ static size_t mb_ucs4be_to_wchar(unsigned char **in, size_t *in_len, uint32_t *b
 	return out - buf;
 }
 
-static void mb_wchar_to_ucs4be(uint32_t *in, size_t len, mb_convert_buf *buf, bool end)
-{
-	unsigned char *out, *limit;
-	MB_CONVERT_BUF_LOAD(buf, out, limit);
-	MB_CONVERT_BUF_ENSURE(buf, out, limit, len * 4);
-
-	while (len--) {
-		uint32_t w = *in++;
-		if (w != MBFL_BAD_INPUT) {
-			out = mb_convert_buf_add4(out, (w >> 24) & 0xFF, (w >> 16) & 0xFF, (w >> 8) & 0xFF, w & 0xFF);
-		} else {
-			MB_CONVERT_ERROR(buf, out, limit, w, mb_wchar_to_ucs4be);
-			MB_CONVERT_BUF_ENSURE(buf, out, limit, len * 4);
-		}
-	}
-
-	MB_CONVERT_BUF_STORE(buf, out, limit);
-}
-
 static size_t mb_ucs4le_to_wchar(unsigned char **in, size_t *in_len, uint32_t *buf, size_t bufsize, unsigned int *state)
 {
 	unsigned char *p = *in, *e = p + (*in_len & ~3);
@@ -417,23 +393,4 @@ static size_t mb_ucs4le_to_wchar(unsigned char **in, size_t *in_len, uint32_t *b
 	*in_len -= (p - *in);
 	*in = p;
 	return out - buf;
-}
-
-static void mb_wchar_to_ucs4le(uint32_t *in, size_t len, mb_convert_buf *buf, bool end)
-{
-	unsigned char *out, *limit;
-	MB_CONVERT_BUF_LOAD(buf, out, limit);
-	MB_CONVERT_BUF_ENSURE(buf, out, limit, len * 4);
-
-	while (len--) {
-		uint32_t w = *in++;
-		if (w != MBFL_BAD_INPUT) {
-			out = mb_convert_buf_add4(out, w & 0xFF, (w >> 8) & 0xFF, (w >> 16) & 0xFF, (w >> 24) & 0xFF);
-		} else {
-			MB_CONVERT_ERROR(buf, out, limit, w, mb_wchar_to_ucs4le);
-			MB_CONVERT_BUF_ENSURE(buf, out, limit, len * 4);
-		}
-	}
-
-	MB_CONVERT_BUF_STORE(buf, out, limit);
 }

@@ -33,7 +33,6 @@
 
 #include "mbfl_defs.h"
 #include "mbfl_consts.h"
-#include "zend.h"
 
 enum mbfl_no_encoding {
 	mbfl_no_encoding_invalid = -1,
@@ -139,13 +138,11 @@ typedef struct {
 	uint32_t errors;
 	uint32_t replacement_char;
 	unsigned int error_mode;
-	zend_string *str;
+	unsigned char *str;
 } mb_convert_buf;
 
 typedef size_t (*mb_to_wchar_fn)(unsigned char **in, size_t *in_len, uint32_t *out, size_t out_len, unsigned int *state);
-typedef void (*mb_from_wchar_fn)(uint32_t *in, size_t in_len, mb_convert_buf *out, bool end);
 typedef bool (*mb_check_fn)(unsigned char *in, size_t in_len);
-typedef zend_string* (*mb_cut_fn)(unsigned char *str, size_t from, size_t len, unsigned char *end);
 
 /* When converting encoded text to a buffer of wchars (Unicode codepoints) using `mb_to_wchar_fn`,
  * the buffer must be at least this size (to work with all supported text encodings) */
@@ -154,32 +151,12 @@ typedef zend_string* (*mb_cut_fn)(unsigned char *str, size_t from, size_t len, u
 static inline void mb_convert_buf_init(mb_convert_buf *buf, size_t initsize, uint32_t repl_char, unsigned int err_mode)
 {
 	buf->state = buf->errors = 0;
-	buf->str = emalloc(_ZSTR_STRUCT_SIZE(initsize));
-	buf->out = (unsigned char*)ZSTR_VAL(buf->str);
+	buf->str = (mbfl_convert_filter *)mbfl_realloc(initsize);
+	buf->out = buf->str;
 	buf->limit = buf->out + initsize;
 	buf->replacement_char = repl_char;
 	buf->error_mode = err_mode;
 }
-
-#define MB_CONVERT_BUF_ENSURE(buf, out, limit, needed) \
-	ZEND_ASSERT(out <= limit); \
-	if ((limit - out) < (needed)) { \
-		size_t oldsize = limit - (unsigned char*)ZSTR_VAL((buf)->str); \
-		size_t newsize = oldsize + MAX(oldsize >> 1, needed); \
-		zend_string *newstr = erealloc((buf)->str, _ZSTR_STRUCT_SIZE(newsize)); \
-		out = (unsigned char*)ZSTR_VAL(newstr) + (out - (unsigned char*)ZSTR_VAL((buf)->str)); \
-		limit = (unsigned char*)ZSTR_VAL(newstr) + newsize; \
-		(buf)->str = newstr; \
-	}
-
-#define MB_CONVERT_BUF_STORE(buf, _out, _limit) (buf)->out = _out; (buf)->limit = _limit
-
-#define MB_CONVERT_BUF_LOAD(buf, _out, _limit) _out = (buf)->out; _limit = (buf)->limit
-
-#define MB_CONVERT_ERROR(buf, out, limit, bad_cp, conv_fn) \
-	MB_CONVERT_BUF_STORE(buf, out, limit); \
-	mb_illegal_output(bad_cp, conv_fn, buf); \
-	MB_CONVERT_BUF_LOAD(buf, out, limit)
 
 static inline unsigned char* mb_convert_buf_add(unsigned char *out, char c)
 {
@@ -227,19 +204,6 @@ static inline unsigned char* mb_convert_buf_appendn(unsigned char *out, const ch
 	return out;
 }
 
-static inline zend_string* mb_convert_buf_result_raw(mb_convert_buf *buf)
-{
-	ZEND_ASSERT(buf->out <= buf->limit);
-	zend_string *ret = buf->str;
-	/* See `zend_string_alloc` in zend_string.h */
-	GC_SET_REFCOUNT(ret, 1);
-	GC_TYPE_INFO(ret) = GC_STRING;
-	ZSTR_H(ret) = 0;
-	ZSTR_LEN(ret) = buf->out - (unsigned char*)ZSTR_VAL(ret);
-	*(buf->out) = '\0';
-	return ret;
-}
-
 typedef struct {
 	enum mbfl_no_encoding no_encoding;
 	const char *name;
@@ -250,38 +214,25 @@ typedef struct {
 	const struct mbfl_convert_vtbl *input_filter;
 	const struct mbfl_convert_vtbl *output_filter;
 	mb_to_wchar_fn to_wchar;
-	mb_from_wchar_fn from_wchar;
 	mb_check_fn check;
-	mb_cut_fn cut;
 } mbfl_encoding;
 
 extern const mbfl_encoding mbfl_encoding_utf8;
 
-static inline zend_string* mb_convert_buf_result(mb_convert_buf *buf, const mbfl_encoding *enc)
-{
-	zend_string *ret = mb_convert_buf_result_raw(buf);
-	if (enc == &mbfl_encoding_utf8 && buf->error_mode != MBFL_OUTPUTFILTER_ILLEGAL_MODE_BADUTF8) {
-		GC_ADD_FLAGS(ret, IS_STR_VALID_UTF8);
-	}
-	return ret;
-}
-
-/* Used if we initialize an `mb_convert_buf` but then discover we don't actually
- * want to return `zend_string` */
 static inline void mb_convert_buf_free(mb_convert_buf *buf)
 {
-	efree(buf->str);
+	mbfl_free((void*)buf->str);
 }
 
 static inline size_t mb_convert_buf_len(mb_convert_buf *buf)
 {
-	return buf->out - (unsigned char*)ZSTR_VAL(buf->str);
+	return buf->out - buf->str;
 }
 
 static inline void mb_convert_buf_reset(mb_convert_buf *buf, size_t len)
 {
-	buf->out = (unsigned char*)ZSTR_VAL(buf->str) + len;
-	ZEND_ASSERT(buf->out <= buf->limit);
+	buf->out = buf->str + len;
+	assert(buf->out <= buf->limit);
 }
 
 MBFLAPI extern const mbfl_encoding *mbfl_name2encoding(const char *name);

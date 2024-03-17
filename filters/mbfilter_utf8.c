@@ -50,8 +50,6 @@ const unsigned char mblen_table_utf8[] = {
 };
 
 static size_t mb_utf8_to_wchar(unsigned char **in, size_t *in_len, uint32_t *buf, size_t bufsize, unsigned int *state);
-static void mb_wchar_to_utf8(uint32_t *in, size_t len, mb_convert_buf *buf, bool end);
-static zend_string* mb_cut_utf8(unsigned char *str, size_t from, size_t len, unsigned char *end);
 
 static const char *mbfl_encoding_utf8_aliases[] = {"utf8", NULL};
 
@@ -65,9 +63,8 @@ const mbfl_encoding mbfl_encoding_utf8 = {
 	&vtbl_utf8_wchar,
 	&vtbl_wchar_utf8,
 	mb_utf8_to_wchar,
-	mb_wchar_to_utf8,
 	NULL,
-	mb_cut_utf8
+	NULL
 };
 
 const struct mbfl_convert_vtbl vtbl_utf8_wchar = {
@@ -172,8 +169,6 @@ retry:
 			goto retry;
 		}
 		break;
-
-		EMPTY_SWITCH_DEFAULT_CASE();
 	}
 
 	return 0;
@@ -254,8 +249,8 @@ static size_t mb_utf8_to_wchar(unsigned char **in, size_t *in_len, uint32_t *buf
 					p--;
 				} else {
 					uint32_t decoded = ((c & 0xF) << 12) | ((c2 & 0x3F) << 6) | (c3 & 0x3F);
-					ZEND_ASSERT(decoded >= 0x800); /* Not an overlong code unit */
-					ZEND_ASSERT(decoded < 0xD800 || decoded > 0xDFFF); /* U+D800-DFFF are reserved, illegal code points */
+					assert(decoded >= 0x800); /* Not an overlong code unit */
+					assert(decoded < 0xD800 || decoded > 0xDFFF); /* U+D800-DFFF are reserved, illegal code points */
 					*out++ = decoded;
 				}
 			} else {
@@ -286,7 +281,7 @@ static size_t mb_utf8_to_wchar(unsigned char **in, size_t *in_len, uint32_t *buf
 					p--;
 				} else {
 					uint32_t decoded = ((c & 0x7) << 18) | ((c2 & 0x3F) << 12) | ((c3 & 0x3F) << 6) | (c4 & 0x3F);
-					ZEND_ASSERT(decoded >= 0x10000); /* Not an overlong code unit */
+					assert(decoded >= 0x10000); /* Not an overlong code unit */
 					*out++ = decoded;
 				}
 			} else {
@@ -308,50 +303,4 @@ static size_t mb_utf8_to_wchar(unsigned char **in, size_t *in_len, uint32_t *buf
 	*in_len = e - p;
 	*in = p;
 	return out - buf;
-}
-
-static void mb_wchar_to_utf8(uint32_t *in, size_t len, mb_convert_buf *buf, bool end)
-{
-	unsigned char *out, *limit;
-	MB_CONVERT_BUF_LOAD(buf, out, limit);
-	MB_CONVERT_BUF_ENSURE(buf, out, limit, len);
-
-	while (len--) {
-		uint32_t w = *in++;
-		if (w < 0x80) {
-			out = mb_convert_buf_add(out, w & 0xFF);
-		} else if (w < 0x800) {
-			MB_CONVERT_BUF_ENSURE(buf, out, limit, len + 2);
-			out = mb_convert_buf_add2(out, ((w >> 6) & 0x1F) | 0xC0, (w & 0x3F) | 0x80);
-		} else if (w < 0x10000) {
-			MB_CONVERT_BUF_ENSURE(buf, out, limit, len + 3);
-			out = mb_convert_buf_add3(out, ((w >> 12) & 0xF) | 0xE0, ((w >> 6) & 0x3F) | 0x80, (w & 0x3F) | 0x80);
-		} else if (w < 0x110000) {
-			MB_CONVERT_BUF_ENSURE(buf, out, limit, len + 4);
-			out = mb_convert_buf_add4(out, ((w >> 18) & 0x7) | 0xF0, ((w >> 12) & 0x3F) | 0x80, ((w >> 6) & 0x3F) | 0x80, (w & 0x3F) | 0x80);
-		} else {
-			MB_CONVERT_ERROR(buf, out, limit, w, mb_wchar_to_utf8);
-			MB_CONVERT_BUF_ENSURE(buf, out, limit, len);
-		}
-	}
-
-	MB_CONVERT_BUF_STORE(buf, out, limit);
-}
-
-static zend_string* mb_cut_utf8(unsigned char *str, size_t from, size_t len, unsigned char *end)
-{
-	unsigned char *start = str + from;
-	/* Byte values less than -64 are UTF-8 continuation bytes, that is,
-	 * the 2nd, 3rd, or 4th byte of a multi-byte character */
-	while (start > str && ((signed char)*start) < -64) {
-		start--;
-	}
-	unsigned char *_end = start + len;
-	if (_end >= end) {
-		return zend_string_init_fast((char*)start, end - start);
-	}
-	while (_end > start && ((signed char)*_end) < -64) {
-		_end--;
-	}
-	return zend_string_init_fast((char*)start, _end - start);
 }

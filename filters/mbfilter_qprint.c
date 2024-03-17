@@ -31,7 +31,6 @@
 #include "mbfilter_qprint.h"
 
 static size_t mb_qprint_to_wchar(unsigned char **in, size_t *in_len, uint32_t *buf, size_t bufsize, unsigned int *state);
-static void mb_wchar_to_qprint(uint32_t *in, size_t len, mb_convert_buf *buf, bool end);
 
 static const char *mbfl_encoding_qprint_aliases[] = {"qprint", NULL};
 
@@ -45,7 +44,6 @@ const mbfl_encoding mbfl_encoding_qprint = {
 	NULL,
 	NULL,
 	mb_qprint_to_wchar,
-	mb_wchar_to_qprint,
 	NULL,
 	NULL,
 };
@@ -288,64 +286,4 @@ static size_t mb_qprint_to_wchar(unsigned char **in, size_t *in_len, uint32_t *b
 	*in_len = e - p;
 	*in = p;
 	return out - buf;
-}
-
-static unsigned char qprint_enc_nibble(unsigned char nibble)
-{
-	if (nibble < 10) {
-		return nibble + '0';
-	} else {
-		return nibble - 10 + 'A';
-	}
-}
-
-static void mb_wchar_to_qprint(uint32_t *in, size_t len, mb_convert_buf *buf, bool end)
-{
-	unsigned char *out, *limit;
-	MB_CONVERT_BUF_LOAD(buf, out, limit);
-	MB_CONVERT_BUF_ENSURE(buf, out, limit, len);
-
-	unsigned int chars_output = buf->state;
-
-	while (len--) {
-		/* We assume that all the input 'codepoints' are not really Unicode codepoints at all,
-		 * but raw bytes from 0x00-0xFF */
-		uint32_t w = *in++;
-
-		if (!w) {
-			out = mb_convert_buf_add(out, '\0');
-			chars_output = 0;
-			continue;
-		} else if (w == '\n') {
-			MB_CONVERT_BUF_ENSURE(buf, out, limit, len + 2);
-			out = mb_convert_buf_add2(out, '\r', '\n');
-			chars_output = 0;
-			continue;
-		} else if (w == '\r') {
-			/* No output */
-			continue;
-		}
-
-		/* QPrint actually mandates that line length should not be more than 76 characters,
-		 * but mbstring stops slightly short of that */
-		if (chars_output >= 72) {
-			MB_CONVERT_BUF_ENSURE(buf, out, limit, len + 4);
-			out = mb_convert_buf_add3(out, '=', '\r', '\n');
-			chars_output = 0;
-		}
-
-		if (w >= 0x80 || w == '=') {
-			/* Not ASCII */
-			MB_CONVERT_BUF_ENSURE(buf, out, limit, len + 3);
-			out = mb_convert_buf_add3(out, '=', qprint_enc_nibble((w >> 4) & 0xF), qprint_enc_nibble(w & 0xF));
-			chars_output += 3;
-		} else {
-			/* Plain ASCII */
-			out = mb_convert_buf_add(out, w);
-			chars_output++;
-		}
-	}
-
-	buf->state = chars_output;
-	MB_CONVERT_BUF_STORE(buf, out, limit);
 }

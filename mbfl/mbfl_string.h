@@ -35,6 +35,7 @@
 #include "mbfl_defs.h"
 #include "mbfl_encoding.h"
 #include "mbfl_language.h"
+#include "mbfl_allocators.h"
 
 /*
  * string object

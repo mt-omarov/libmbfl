@@ -177,7 +177,7 @@ mbfl_strcut(
 
 		/* allocate memory and copy string */
 		sz = end - start;
-		w = ecalloc(sz + 8, sizeof(unsigned char));
+		w = mbfl_malloc(sz + 8, sizeof(unsigned char));
 
 		memcpy(w, start, sz);
 		w[sz] = '\0';

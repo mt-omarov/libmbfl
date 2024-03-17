@@ -82,7 +82,6 @@
 static int mbfl_filt_conv_wchar_utf7imap_flush(mbfl_convert_filter *filter);
 static int mbfl_filt_conv_utf7imap_wchar_flush(mbfl_convert_filter *filter);
 static size_t mb_utf7imap_to_wchar(unsigned char **in, size_t *in_len, uint32_t *buf, size_t bufsize, unsigned int *state);
-static void mb_wchar_to_utf7imap(uint32_t *in, size_t len, mb_convert_buf *buf, bool end);
 static bool mb_check_utf7imap(unsigned char *in, size_t in_len);
 
 static const char *mbfl_encoding_utf7imap_aliases[] = {"mUTF-7", NULL};
@@ -97,7 +96,6 @@ const mbfl_encoding mbfl_encoding_utf7imap = {
 	&vtbl_utf7imap_wchar,
 	&vtbl_wchar_utf7imap,
 	mb_utf7imap_to_wchar,
-	mb_wchar_to_utf7imap,
 	mb_check_utf7imap,
 	NULL,
 };
@@ -281,8 +279,6 @@ int mbfl_filt_conv_utf7imap_wchar(int c, mbfl_convert_filter *filter)
 			}
 		}
 		break;
-
-		EMPTY_SWITCH_DEFAULT_CASE();
 	}
 
 	return 0;
@@ -408,8 +404,6 @@ int mbfl_filt_conv_wchar_utf7imap(int c, mbfl_convert_filter *filter)
 			filter->cache = c;
 		}
 		break;
-
-		EMPTY_SWITCH_DEFAULT_CASE();
 	}
 
 	return 0;
@@ -509,7 +503,7 @@ static uint32_t* handle_base64_end(unsigned char n, uint32_t *out, bool *base64,
 
 static size_t mb_utf7imap_to_wchar(unsigned char **in, size_t *in_len, uint32_t *buf, size_t bufsize, unsigned int *state)
 {
-	ZEND_ASSERT(bufsize >= 5); /* This function will infinite-loop if called with a tiny output buffer */
+	assert(bufsize >= 5); /* This function will infinite-loop if called with a tiny output buffer */
 
 	/* Why does this require a minimum output buffer size of 5?
 	 * See comment in mb_utf7_to_wchar; the worst case for this function is similar,
@@ -617,7 +611,7 @@ static size_t mb_utf7imap_to_wchar(unsigned char **in, size_t *in_len, uint32_t 
 	if (p == e && base64) {
 		/* UTF7-IMAP doesn't allow strings to end in Base64 mode
 		 * One space in output buffer was reserved just for this */
-		ZEND_ASSERT(out < limit);
+		assert(out < limit);
 		*out++ = MBFL_BAD_INPUT;
 	}
 
@@ -642,97 +636,6 @@ static const unsigned char mbfl_base64_table[] = {
  /* '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '+', ',', '\0' */
    0x30,0x31,0x32,0x33,0x34,0x35,0x36,0x37,0x38,0x39,0x2b,0x2c,0x00
 };
-
-static void mb_wchar_to_utf7imap(uint32_t *in, size_t len, mb_convert_buf *buf, bool end)
-{
-	unsigned char *out, *limit;
-	MB_CONVERT_BUF_LOAD(buf, out, limit);
-	MB_CONVERT_BUF_ENSURE(buf, out, limit, len);
-
-	bool base64;
-	unsigned char nbits, cache; /* `nbits` is the number of cached bits; either 0, 2, or 4 */
-	RESTORE_CONVERSION_STATE();
-
-	while (len--) {
-		uint32_t w = *in++;
-		if (base64) {
-			if (w >= 0x20 && w <= 0x7E) {
-				/* End of Base64 section. Drain buffered bits (if any), close Base64 section
-				 * Leave enough space in the output buffer such that even if the remainder of
-				 * the input string is ASCII, we can output the whole thing without having to
-				 * check for output buffer space again */
-				base64 = false;
-				in--; len++; /* Unconsume codepoint; it will be handled by 'ASCII section' code below */
-				MB_CONVERT_BUF_ENSURE(buf, out, limit, len + 2);
-				if (nbits) {
-					out = mb_convert_buf_add(out, mbfl_base64_table[(cache << (6 - nbits)) & 0x3F]);
-				}
-				nbits = cache = 0;
-				out = mb_convert_buf_add(out, '-');
-			} else if (w >= MBFL_WCSPLANE_UTF32MAX) {
-				/* Make recursive call to add an error marker character */
-				SAVE_CONVERSION_STATE();
-				MB_CONVERT_ERROR(buf, out, limit, w, mb_wchar_to_utf7imap);
-				MB_CONVERT_BUF_ENSURE(buf, out, limit, len);
-				RESTORE_CONVERSION_STATE();
-			} else {
-				/* Encode codepoint, preceded by any cached bits, as Base64
-				 * Make enough space in the output buffer to hold both any bytes that
-				 * we emit right here, plus any finishing byte which might need to
-				 * be emitted if the input string ends abruptly */
-				uint64_t bits;
-				if (w >= MBFL_WCSPLANE_SUPMIN) {
-					/* Must use surrogate pair */
-					MB_CONVERT_BUF_ENSURE(buf, out, limit, 7);
-					w -= 0x10000;
-					bits = ((uint64_t)cache << 32) | 0xD800DC00L | ((w & 0xFFC00) << 6) | (w & 0x3FF);
-					nbits += 32;
-				} else {
-					MB_CONVERT_BUF_ENSURE(buf, out, limit, 4);
-					bits = (cache << 16) | w;
-					nbits += 16;
-				}
-
-				while (nbits >= 6) {
-					out = mb_convert_buf_add(out, mbfl_base64_table[(bits >> (nbits - 6)) & 0x3F]);
-					nbits -= 6;
-				}
-				cache = bits;
-			}
-		} else {
-			/* ASCII section */
-			if (w == '&') {
-				MB_CONVERT_BUF_ENSURE(buf, out, limit, len + 2);
-				out = mb_convert_buf_add2(out, '&', '-');
-			} else if (w >= 0x20 && w <= 0x7E) {
-				out = mb_convert_buf_add(out, w);
-			} else if (w >= MBFL_WCSPLANE_UTF32MAX) {
-				buf->state = 0;
-				MB_CONVERT_ERROR(buf, out, limit, w, mb_wchar_to_utf7imap);
-				MB_CONVERT_BUF_ENSURE(buf, out, limit, len);
-				RESTORE_CONVERSION_STATE();
-			} else {
-				out = mb_convert_buf_add(out, '&');
-				base64 = true;
-				in--; len++; /* Unconsume codepoint; it will be handled by Base64 code above */
-			}
-		}
-	}
-
-	if (end) {
-		if (nbits) {
-			out = mb_convert_buf_add(out, mbfl_base64_table[(cache << (6 - nbits)) & 0x3F]);
-		}
-		if (base64) {
-			MB_CONVERT_BUF_ENSURE(buf, out, limit, 1);
-			out = mb_convert_buf_add(out, '-');
-		}
-	} else {
-		SAVE_CONVERSION_STATE();
-	}
-
-	MB_CONVERT_BUF_STORE(buf, out, limit);
-}
 
 static bool is_utf16_cp_valid(uint16_t cp, bool is_surrogate)
 {

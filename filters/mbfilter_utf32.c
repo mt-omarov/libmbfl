@@ -33,9 +33,7 @@
 static int mbfl_filt_conv_utf32_wchar_flush(mbfl_convert_filter *filter);
 static size_t mb_utf32_to_wchar(unsigned char **in, size_t *in_len, uint32_t *buf, size_t bufsize, unsigned int *state);
 static size_t mb_utf32be_to_wchar(unsigned char **in, size_t *in_len, uint32_t *buf, size_t bufsize, unsigned int *state);
-static void mb_wchar_to_utf32be(uint32_t *in, size_t len, mb_convert_buf *buf, bool end);
 static size_t mb_utf32le_to_wchar(unsigned char **in, size_t *in_len, uint32_t *buf, size_t bufsize, unsigned int *state);
-static void mb_wchar_to_utf32le(uint32_t *in, size_t len, mb_convert_buf *buf, bool end);
 
 static const char *mbfl_encoding_utf32_aliases[] = {"utf32", NULL};
 
@@ -49,7 +47,6 @@ const mbfl_encoding mbfl_encoding_utf32 = {
 	&vtbl_utf32_wchar,
 	&vtbl_wchar_utf32,
 	mb_utf32_to_wchar,
-	mb_wchar_to_utf32be,
 	NULL,
 	NULL,
 };
@@ -64,7 +61,6 @@ const mbfl_encoding mbfl_encoding_utf32be = {
 	&vtbl_utf32be_wchar,
 	&vtbl_wchar_utf32be,
 	mb_utf32be_to_wchar,
-	mb_wchar_to_utf32be,
 	NULL,
 	NULL,
 };
@@ -79,7 +75,6 @@ const mbfl_encoding mbfl_encoding_utf32le = {
 	&vtbl_utf32le_wchar,
 	&vtbl_wchar_utf32le,
 	mb_utf32le_to_wchar,
-	mb_wchar_to_utf32le,
 	NULL,
 	NULL,
 };
@@ -312,25 +307,6 @@ static size_t mb_utf32be_to_wchar(unsigned char **in, size_t *in_len, uint32_t *
 	return out - buf;
 }
 
-static void mb_wchar_to_utf32be(uint32_t *in, size_t len, mb_convert_buf *buf, bool end)
-{
-	unsigned char *out, *limit;
-	MB_CONVERT_BUF_LOAD(buf, out, limit);
-	MB_CONVERT_BUF_ENSURE(buf, out, limit, len * 4);
-
-	while (len--) {
-		uint32_t w = *in++;
-		if (w < MBFL_WCSPLANE_UTF32MAX) {
-			out = mb_convert_buf_add4(out, (w >> 24) & 0xFF, (w >> 16) & 0xFF, (w >> 8) & 0xFF, w & 0xFF);
-		} else {
-			MB_CONVERT_ERROR(buf, out, limit, w, mb_wchar_to_utf32be);
-			MB_CONVERT_BUF_ENSURE(buf, out, limit, len * 4);
-		}
-	}
-
-	MB_CONVERT_BUF_STORE(buf, out, limit);
-}
-
 static size_t mb_utf32le_to_wchar(unsigned char **in, size_t *in_len, uint32_t *buf, size_t bufsize, unsigned int *state)
 {
 	unsigned char *p = *in, *e = p + (*in_len & ~3);
@@ -359,23 +335,4 @@ static size_t mb_utf32le_to_wchar(unsigned char **in, size_t *in_len, uint32_t *
 	*in_len -= (p - *in);
 	*in = p;
 	return out - buf;
-}
-
-static void mb_wchar_to_utf32le(uint32_t *in, size_t len, mb_convert_buf *buf, bool end)
-{
-	unsigned char *out, *limit;
-	MB_CONVERT_BUF_LOAD(buf, out, limit);
-	MB_CONVERT_BUF_ENSURE(buf, out, limit, len * 4);
-
-	while (len--) {
-		uint32_t w = *in++;
-		if (w < MBFL_WCSPLANE_UTF32MAX) {
-			out = mb_convert_buf_add4(out, w & 0xFF, (w >> 8) & 0xFF, (w >> 16) & 0xFF, (w >> 24) & 0xFF);
-		} else {
-			MB_CONVERT_ERROR(buf, out, limit, w, mb_wchar_to_utf32le);
-			MB_CONVERT_BUF_ENSURE(buf, out, limit, len * 4);
-		}
-	}
-
-	MB_CONVERT_BUF_STORE(buf, out, limit);
 }

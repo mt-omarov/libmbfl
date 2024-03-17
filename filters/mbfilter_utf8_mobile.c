@@ -39,13 +39,9 @@ extern int mbfl_filt_conv_utf8_wchar_flush(mbfl_convert_filter *filter);
 extern int mbfl_filt_conv_sjis_mobile_flush(mbfl_convert_filter *filter);
 
 static size_t mb_utf8_docomo_to_wchar(unsigned char **in, size_t *in_len, uint32_t *buf, size_t bufsize, unsigned int *state);
-static void mb_wchar_to_utf8_docomo(uint32_t *in, size_t len, mb_convert_buf *buf, bool end);
 static size_t mb_utf8_kddi_a_to_wchar(unsigned char **in, size_t *in_len, uint32_t *buf, size_t bufsize, unsigned int *state);
-static void mb_wchar_to_utf8_kddi_a(uint32_t *in, size_t len, mb_convert_buf *buf, bool end);
 static size_t mb_utf8_kddi_b_to_wchar(unsigned char **in, size_t *in_len, uint32_t *buf, size_t bufsize, unsigned int *state);
-static void mb_wchar_to_utf8_kddi_b(uint32_t *in, size_t len, mb_convert_buf *buf, bool end);
 static size_t mb_utf8_sb_to_wchar(unsigned char **in, size_t *in_len, uint32_t *buf, size_t bufsize, unsigned int *state);
-static void mb_wchar_to_utf8_sb(uint32_t *in, size_t len, mb_convert_buf *buf, bool end);
 
 static bool mbfilter_conv_map_tbl(int c, int *w, const unsigned short map[][3], int n)
 {
@@ -123,7 +119,6 @@ const mbfl_encoding mbfl_encoding_utf8_docomo = {
 	&vtbl_utf8_docomo_wchar,
 	&vtbl_wchar_utf8_docomo,
 	mb_utf8_docomo_to_wchar,
-	mb_wchar_to_utf8_docomo,
 	NULL,
 	NULL,
 };
@@ -138,7 +133,6 @@ const mbfl_encoding mbfl_encoding_utf8_kddi_a = {
 	&vtbl_utf8_kddi_a_wchar,
 	&vtbl_wchar_utf8_kddi_a,
 	mb_utf8_kddi_a_to_wchar,
-	mb_wchar_to_utf8_kddi_a,
 	NULL,
 	NULL,
 };
@@ -153,7 +147,6 @@ const mbfl_encoding mbfl_encoding_utf8_kddi_b = {
 	&vtbl_utf8_kddi_b_wchar,
 	&vtbl_wchar_utf8_kddi_b,
 	mb_utf8_kddi_b_to_wchar,
-	mb_wchar_to_utf8_kddi_b,
 	NULL,
 	NULL,
 };
@@ -168,7 +161,6 @@ const mbfl_encoding mbfl_encoding_utf8_sb = {
 	&vtbl_utf8_sb_wchar,
 	&vtbl_wchar_utf8_sb,
 	mb_utf8_sb_to_wchar,
-	mb_wchar_to_utf8_sb,
 	NULL,
 	NULL,
 };
@@ -349,8 +341,6 @@ retry:
 			goto retry;
 		}
 		break;
-
-		EMPTY_SWITCH_DEFAULT_CASE();
 	}
 
 	return 0;
@@ -509,178 +499,9 @@ static size_t mb_utf8_docomo_to_wchar(unsigned char **in, size_t *in_len, uint32
 	return mb_mobile_utf8_to_wchar(in, in_len, buf, bufsize, state, mbfl_docomo2uni_pua, mbfilter_sjis_emoji_docomo2unicode, 4);
 }
 
-static void mb_wchar_to_utf8_docomo(uint32_t *in, size_t len, mb_convert_buf *buf, bool end)
-{
-	unsigned char *out, *limit;
-	MB_CONVERT_BUF_LOAD(buf, out, limit);
-	MB_CONVERT_BUF_ENSURE(buf, out, limit, len);
-
-	while (len--) {
-		uint32_t w = *in++;
-		unsigned int s = 0;
-		int c1 = 0;
-
-		if (w < 0x110000) {
-			if ((w == '#' || (w >= '0' && w <= '9')) && len) {
-				uint32_t w2 = *in++; len--;
-
-				if (w2 == 0x20E3) {
-					if (w == '#') {
-						s = 0x2964;
-					} else if (w == '0') {
-						s = 0x296F;
-					} else {
-						s = 0x2966 + (w - '1');
-					}
-				} else {
-					in--; len++;
-				}
-			} else if (w == 0xA9) { /* Copyright sign */
-				s = 0x29B5;
-			} else if (w == 0xAE) { /* Registered sign */
-				s = 0x29BA;
-			} else if (w >= mb_tbl_uni_docomo2code2_min && w <= mb_tbl_uni_docomo2code2_max) {
-				int i = mbfl_bisec_srch2(w, mb_tbl_uni_docomo2code2_key, mb_tbl_uni_docomo2code2_len);
-				if (i >= 0) {
-					s = mb_tbl_uni_docomo2code2_value[i];
-				}
-			} else if (w >= mb_tbl_uni_docomo2code3_min && w <= mb_tbl_uni_docomo2code3_max) {
-				int i = mbfl_bisec_srch2(w - 0x10000, mb_tbl_uni_docomo2code3_key, mb_tbl_uni_docomo2code3_len);
-				if (i >= 0) {
-					s = mb_tbl_uni_docomo2code3_value[i];
-				}
-			} else if (w >= mb_tbl_uni_docomo2code5_min && w <= mb_tbl_uni_docomo2code5_max) {
-				int i = mbfl_bisec_srch2(w - 0xF0000, mb_tbl_uni_docomo2code5_key, mb_tbl_uni_docomo2code5_len);
-				if (i >= 0) {
-					s = mb_tbl_uni_docomo2code5_val[i];
-				}
-			}
-
-			if (s && mbfilter_conv_map_tbl(s, &c1, mbfl_docomo2uni_pua, 4)) {
-				w = c1;
-			}
-
-			if (w <= 0x7F) {
-				out = mb_convert_buf_add(out, w);
-			} else if (w <= 0x7FF) {
-				MB_CONVERT_BUF_ENSURE(buf, out, limit, len + 2);
-				out = mb_convert_buf_add2(out, ((w >> 6) & 0x1F) | 0xC0, (w & 0x3F) | 0x80);
-			} else if (w <= 0xFFFF) {
-				MB_CONVERT_BUF_ENSURE(buf, out, limit, len + 3);
-				out = mb_convert_buf_add3(out, ((w >> 12) & 0xF) | 0xE0, ((w >> 6) & 0x3F) | 0x80, (w & 0x3F) | 0x80);
-			} else {
-				MB_CONVERT_BUF_ENSURE(buf, out, limit, len + 4);
-				out = mb_convert_buf_add4(out, ((w >> 18) & 0x7) | 0xF0, ((w >> 12) & 0x3F) | 0x80, ((w >> 6) & 0x3F) | 0x80, (w & 0x3F) | 0x80);
-			}
-		} else {
-			MB_CONVERT_ERROR(buf, out, limit, w, mb_wchar_to_utf8_docomo);
-			MB_CONVERT_BUF_ENSURE(buf, out, limit, len);
-		}
-	}
-
-	MB_CONVERT_BUF_STORE(buf, out, limit);
-}
-
 static size_t mb_utf8_kddi_a_to_wchar(unsigned char **in, size_t *in_len, uint32_t *buf, size_t bufsize, unsigned int *state)
 {
 	return mb_mobile_utf8_to_wchar(in, in_len, buf, bufsize, state, mbfl_kddi2uni_pua, mbfilter_sjis_emoji_kddi2unicode, 7);
-}
-
-static void mb_wchar_to_utf8_kddi(uint32_t *in, size_t len, mb_convert_buf *buf, bool end, const unsigned short emoji_map[][3], int n, mb_from_wchar_fn error_handler)
-{
-	unsigned char *out, *limit;
-	MB_CONVERT_BUF_LOAD(buf, out, limit);
-	MB_CONVERT_BUF_ENSURE(buf, out, limit, len);
-
-	while (len--) {
-		uint32_t w = *in++;
-		unsigned int s = 0;
-		int c1 = 0;
-
-		if (w < 0x110000) {
-			if ((w == '#' || (w >= '0' && w <= '9')) && len) {
-				uint32_t w2 = *in++; len--;
-
-				if (w2 == 0x20E3) {
-					if (w == '#') {
-						s = 0x25BC;
-					} else if (w == '0') {
-						s = 0x2830;
-					} else {
-						s = 0x27A6 + (w - '1');
-					}
-				} else {
-					in--; len++;
-				}
-			} else if (w >= NFLAGS('C') && w <= NFLAGS('U')) { /* C for CN, U for US */
-				if (len) {
-					uint32_t w2 = *in++; len--;
-
-					if (w2 >= NFLAGS('B') && w2 <= NFLAGS('U')) { /* B for GB, U for RU */
-						for (int i = 0; i < 10; i++) {
-							if (w == NFLAGS(nflags_s[i][0]) && w2 == NFLAGS(nflags_s[i][1])) {
-								s = nflags_code_kddi[i];
-								goto process_kuten;
-							}
-						}
-					}
-
-					in--; len++;
-				}
-
-				MB_CONVERT_ERROR(buf, out, limit, w, error_handler);
-				MB_CONVERT_BUF_ENSURE(buf, out, limit, len);
-				continue;
-			} else if (w == 0xA9) { /* Copyright sign */
-				s = 0x27DC;
-			} else if (w == 0xAE) { /* Registered sign */
-				s = 0x27DD;
-			} else if (w >= mb_tbl_uni_kddi2code2_min && w <= mb_tbl_uni_kddi2code2_max) {
-				int i = mbfl_bisec_srch2(w, mb_tbl_uni_kddi2code2_key, mb_tbl_uni_kddi2code2_len);
-				if (i >= 0) {
-					s = mb_tbl_uni_kddi2code2_value[i];
-				}
-			} else if (w >= mb_tbl_uni_kddi2code3_min && w <= mb_tbl_uni_kddi2code3_max) {
-				int i = mbfl_bisec_srch2(w - 0x10000, mb_tbl_uni_kddi2code3_key, mb_tbl_uni_kddi2code3_len);
-				if (i >= 0) {
-					s = mb_tbl_uni_kddi2code3_value[i];
-				}
-			} else if (w >= mb_tbl_uni_kddi2code5_min && w <= mb_tbl_uni_kddi2code5_max) {
-				int i = mbfl_bisec_srch2(w - 0xF0000, mb_tbl_uni_kddi2code5_key, mb_tbl_uni_kddi2code5_len);
-				if (i >= 0) {
-					s = mb_tbl_uni_kddi2code5_val[i];
-				}
-			}
-
-process_kuten:
-			if (s && mbfilter_conv_map_tbl(s, &c1, emoji_map, n)) {
-				w = c1;
-			}
-
-			if (w <= 0x7F) {
-				out = mb_convert_buf_add(out, w);
-			} else if (w <= 0x7FF) {
-				MB_CONVERT_BUF_ENSURE(buf, out, limit, len + 2);
-				out = mb_convert_buf_add2(out, ((w >> 6) & 0x1F) | 0xC0, (w & 0x3F) | 0x80);
-			} else if (w <= 0xFFFF) {
-				MB_CONVERT_BUF_ENSURE(buf, out, limit, len + 3);
-				out = mb_convert_buf_add3(out, ((w >> 12) & 0xF) | 0xE0, ((w >> 6) & 0x3F) | 0x80, (w & 0x3F) | 0x80);
-			} else {
-				MB_CONVERT_BUF_ENSURE(buf, out, limit, len + 4);
-				out = mb_convert_buf_add4(out, ((w >> 18) & 0x7) | 0xF0, ((w >> 12) & 0x3F) | 0x80, ((w >> 6) & 0x3F) | 0x80, (w & 0x3F) | 0x80);
-			}
-		} else {
-			MB_CONVERT_ERROR(buf, out, limit, w, error_handler);
-			MB_CONVERT_BUF_ENSURE(buf, out, limit, len);
-		}
-	}
-
-	MB_CONVERT_BUF_STORE(buf, out, limit);
-}
-
-static void mb_wchar_to_utf8_kddi_a(uint32_t *in, size_t len, mb_convert_buf *buf, bool end)
-{
-	mb_wchar_to_utf8_kddi(in, len, buf, end, mbfl_kddi2uni_pua, 7, mb_wchar_to_utf8_kddi_a);
 }
 
 static size_t mb_utf8_kddi_b_to_wchar(unsigned char **in, size_t *in_len, uint32_t *buf, size_t bufsize, unsigned int *state)
@@ -688,104 +509,7 @@ static size_t mb_utf8_kddi_b_to_wchar(unsigned char **in, size_t *in_len, uint32
 	return mb_mobile_utf8_to_wchar(in, in_len, buf, bufsize, state, mbfl_kddi2uni_pua_b, mbfilter_sjis_emoji_kddi2unicode, 8);
 }
 
-static void mb_wchar_to_utf8_kddi_b(uint32_t *in, size_t len, mb_convert_buf *buf, bool end)
-{
-	mb_wchar_to_utf8_kddi(in, len, buf, end, mbfl_kddi2uni_pua_b, 8, mb_wchar_to_utf8_kddi_b);
-}
-
 static size_t mb_utf8_sb_to_wchar(unsigned char **in, size_t *in_len, uint32_t *buf, size_t bufsize, unsigned int *state)
 {
 	return mb_mobile_utf8_to_wchar(in, in_len, buf, bufsize, state, mbfl_sb2uni_pua, mbfilter_sjis_emoji_sb2unicode, 6);
-}
-
-static void mb_wchar_to_utf8_sb(uint32_t *in, size_t len, mb_convert_buf *buf, bool end)
-{
-	unsigned char *out, *limit;
-	MB_CONVERT_BUF_LOAD(buf, out, limit);
-	MB_CONVERT_BUF_ENSURE(buf, out, limit, len);
-
-	while (len--) {
-		uint32_t w = *in++;
-		unsigned int s = 0;
-		int c1 = 0;
-
-		if (w < 0x110000) {
-			if ((w == '#' || (w >= '0' && w <= '9')) && len) {
-				uint32_t w2 = *in++; len--;
-
-				if (w2 == 0x20E3) {
-					if (w == '#') {
-						s = 0x2817;
-					} else if (w == '0') {
-						s = 0x282C;
-					} else {
-						s = 0x2823 + (w - '1');
-					}
-				} else {
-					in--; len++;
-				}
-			} else if (w >= NFLAGS('C') && w <= NFLAGS('U')) { /* C for CN, U for US */
-				if (len) {
-					uint32_t w2 = *in++; len--;
-
-					if (w2 >= NFLAGS('B') && w2 <= NFLAGS('U')) { /* B for GB, U for RU */
-						for (int i = 0; i < 10; i++) {
-							if (w == NFLAGS(nflags_s[i][0]) && w2 == NFLAGS(nflags_s[i][1])) {
-								s = nflags_code_sb[i];
-								goto process_kuten;
-							}
-						}
-					}
-
-					in--; len++;
-				}
-
-				MB_CONVERT_ERROR(buf, out, limit, w, mb_wchar_to_utf8_sb);
-				MB_CONVERT_BUF_ENSURE(buf, out, limit, len);
-				continue;
-			} else if (w == 0xA9) { /* Copyright sign */
-				s = 0x2855;
-			} else if (w == 0xAE) { /* Registered sign */
-				s = 0x2856;
-			} else if (w >= mb_tbl_uni_sb2code2_min && w <= mb_tbl_uni_sb2code2_max) {
-				int i = mbfl_bisec_srch2(w, mb_tbl_uni_sb2code2_key, mb_tbl_uni_sb2code2_len);
-				if (i >= 0) {
-					s = mb_tbl_uni_sb2code2_value[i];
-				}
-			} else if (w >= mb_tbl_uni_sb2code3_min && w <= mb_tbl_uni_sb2code3_max) {
-				int i = mbfl_bisec_srch2(w - 0x10000, mb_tbl_uni_sb2code3_key, mb_tbl_uni_sb2code3_len);
-				if (i >= 0) {
-					s = mb_tbl_uni_sb2code3_value[i];
-				}
-			} else if (w >= mb_tbl_uni_sb2code5_min && w <= mb_tbl_uni_sb2code5_max) {
-				int i = mbfl_bisec_srch2(w - 0xF0000, mb_tbl_uni_sb2code5_key, mb_tbl_uni_sb2code5_len);
-				if (i >= 0) {
-					s = mb_tbl_uni_sb2code5_val[i];
-				}
-			}
-
-process_kuten:
-			if (s && mbfilter_conv_map_tbl(s, &c1, mbfl_sb2uni_pua, 6)) {
-				w = c1;
-			}
-
-			if (w <= 0x7F) {
-				out = mb_convert_buf_add(out, w);
-			} else if (w <= 0x7FF) {
-				MB_CONVERT_BUF_ENSURE(buf, out, limit, len + 2);
-				out = mb_convert_buf_add2(out, ((w >> 6) & 0x1F) | 0xC0, (w & 0x3F) | 0x80);
-			} else if (w <= 0xFFFF) {
-				MB_CONVERT_BUF_ENSURE(buf, out, limit, len + 3);
-				out = mb_convert_buf_add3(out, ((w >> 12) & 0xF) | 0xE0, ((w >> 6) & 0x3F) | 0x80, (w & 0x3F) | 0x80);
-			} else {
-				MB_CONVERT_BUF_ENSURE(buf, out, limit, len + 4);
-				out = mb_convert_buf_add4(out, ((w >> 18) & 0x7) | 0xF0, ((w >> 12) & 0x3F) | 0x80, ((w >> 6) & 0x3F) | 0x80, (w & 0x3F) | 0x80);
-			}
-		} else {
-			MB_CONVERT_ERROR(buf, out, limit, w, mb_wchar_to_utf8_sb);
-			MB_CONVERT_BUF_ENSURE(buf, out, limit, len);
-		}
-	}
-
-	MB_CONVERT_BUF_STORE(buf, out, limit);
 }

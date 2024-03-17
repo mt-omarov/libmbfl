@@ -85,22 +85,19 @@
 #ifndef MBFL_MBFILTER_H
 #define MBFL_MBFILTER_H
 
-#include "zend.h"
-
 #include "mbfl_defs.h"
 #include "mbfl_consts.h"
 #include "mbfl_encoding.h"
 #include "mbfl_language.h"
 #include "mbfl_string.h"
 #include "mbfl_convert.h"
+#include "mbfl_allocators.h"
 
 /* Prefer local fix, otherwise need to include too much. */
+// KPHP update:
+// delete unattainable _WIN64 and _WIN32
 #ifndef ssize_t
-#if defined(_WIN64)
-#define ssize_t __int64
-#elif defined(_WIN32)
-#define ssize_t __int32
-#elif defined(__GNUC__) && __GNUC__ >= 4
+#if defined(__GNUC__) && __GNUC__ >= 4
 #define ssize_t long
 #endif
 #endif
