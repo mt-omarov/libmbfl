@@ -5,7 +5,7 @@
  * LICENSE NOTICES
  *
  * This file is part of "streamable kanji code filter and converter",
- * which is distributed under the terms of GNU Lesser General Public 
+ * which is distributed under the terms of GNU Lesser General Public
  * License (version 2) as published by the Free Software Foundation.
  *
  * This software is distributed in the hope that it will be useful,
@@ -32,7 +32,6 @@
 #define MBFL_FILTER_OUTPUT_H
 
 MBFLAPI extern int mbfl_filter_output_pipe(int c, void* data);
-MBFLAPI extern int mbfl_filter_output_pipe_flush(void* data);
 MBFLAPI extern int mbfl_filter_output_null(int c, void* data);
 
 #endif /* MBFL_FILTER_OUTPUT_H */

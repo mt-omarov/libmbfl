@@ -5,7 +5,7 @@
  * LICENSE NOTICES
  *
  * This file is part of "streamable kanji code filter and converter",
- * which is distributed under the terms of GNU Lesser General Public 
+ * which is distributed under the terms of GNU Lesser General Public
  * License (version 2) as published by the Free Software Foundation.
  *
  * This software is distributed in the hope that it will be useful,
@@ -24,8 +24,6 @@
 
 #ifndef UNICODE_TABLE_CP932_EXT_H
 #define UNICODE_TABLE_CP932_EXT_H
-
-#ifdef UNICODE_TABLE_CP932_DEF
 
 const unsigned short cp932ext1_ucs_table[] = {
  /* ku 13 */
@@ -168,20 +166,5 @@ const unsigned short cp932ext3_ucs_table[] = {
 };
 const int cp932ext3_ucs_table_min = (115 - 1)*94;
 const int cp932ext3_ucs_table_max = (115 - 1)*94 + (sizeof (cp932ext3_ucs_table) / sizeof (unsigned short));
-
-#else
-
-extern const unsigned short cp932ext1_ucs_table[];
-extern const unsigned short cp932ext2_ucs_table[];
-extern const unsigned short cp932ext3_ucs_table[];
-
-extern const int cp932ext1_ucs_table_min;
-extern const int cp932ext1_ucs_table_max;
-extern const int cp932ext2_ucs_table_min;
-extern const int cp932ext2_ucs_table_max;
-extern const int cp932ext3_ucs_table_min;
-extern const int cp932ext3_ucs_table_max;
-
-#endif
 
 #endif /* UNICODE_TABLE_CP932_EXT_H */

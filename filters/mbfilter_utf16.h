@@ -5,7 +5,7 @@
  * LICENSE NOTICES
  *
  * This file is part of "streamable kanji code filter and converter",
- * which is distributed under the terms of GNU Lesser General Public 
+ * which is distributed under the terms of GNU Lesser General Public
  * License (version 2) as published by the Free Software Foundation.
  *
  * This software is distributed in the hope that it will be useful,
@@ -24,7 +24,7 @@
 /*
  * The source code included in this files was separated from mbfilter.c
  * by moriyoshi koizumi <moriyoshi@php.net> on 4 dec 2002.
- * 
+ *
  */
 
 #ifndef MBFL_MBFILTER_UTF16_H
@@ -33,6 +33,7 @@
 extern const mbfl_encoding mbfl_encoding_utf16;
 extern const mbfl_encoding mbfl_encoding_utf16be;
 extern const mbfl_encoding mbfl_encoding_utf16le;
+
 extern const struct mbfl_convert_vtbl vtbl_utf16_wchar;
 extern const struct mbfl_convert_vtbl vtbl_wchar_utf16;
 extern const struct mbfl_convert_vtbl vtbl_utf16be_wchar;
@@ -45,5 +46,9 @@ int mbfl_filt_conv_utf16be_wchar(int c, mbfl_convert_filter *filter);
 int mbfl_filt_conv_wchar_utf16be(int c, mbfl_convert_filter *filter);
 int mbfl_filt_conv_utf16le_wchar(int c, mbfl_convert_filter *filter);
 int mbfl_filt_conv_wchar_utf16le(int c, mbfl_convert_filter *filter);
+
+#ifdef ZEND_INTRIN_AVX2_FUNC_PTR
+void init_convert_utf16(void);
+#endif
 
 #endif /* MBFL_MBFILTER_UTF16_H */

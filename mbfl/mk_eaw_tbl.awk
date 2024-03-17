@@ -1,7 +1,5 @@
 #!/usr/bin/awk -f
 #
-# $Id: mk_eaw_tbl.awk 507 2011-07-16 04:25:20Z hirokawa $
-#
 # Description: a script to generate east asian width table.
 #
 
@@ -78,4 +76,4 @@ END {
 		printf("{ 0x%04x, 0x%04x }", first, prev)
 	}
 	print "\n};\n"
-} 
+}

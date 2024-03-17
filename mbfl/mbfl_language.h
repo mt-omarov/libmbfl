@@ -5,7 +5,7 @@
  * LICENSE NOTICES
  *
  * This file is part of "streamable kanji code filter and converter",
- * which is distributed under the terms of GNU Lesser General Public 
+ * which is distributed under the terms of GNU Lesser General Public
  * License (version 2) as published by the Free Software Foundation.
  *
  * This software is distributed in the hope that it will be useful,
@@ -72,7 +72,7 @@ typedef struct _mbfl_language {
 	enum mbfl_no_language no_language;
 	const char *name;
 	const char *short_name;
-	const char *(*aliases)[];
+	const char **aliases;
 	enum mbfl_no_encoding mail_charset;
 	enum mbfl_no_encoding mail_header_encoding;
 	enum mbfl_no_encoding mail_body_encoding;
